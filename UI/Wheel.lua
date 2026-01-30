@@ -370,6 +370,11 @@ function KeystoneRoulette:StartSpin()
 	end
 
 	-- Pick random winner
+	-- Burn a variable number of random calls based on time to improve distribution
+	local burnCount = math.floor(GetTime() * 1000) % 10 + 1
+	for i = 1, burnCount do
+		math.random()
+	end
 	frame.selectedIndex = math.random(1, count)
 	frame.spinning = true
 	frame.spinStartTime = GetTime()
