@@ -263,6 +263,10 @@ function KeystoneRoulette:RefreshWheelKeystones()
 		return
 	end
 
+	if self.logger then
+		self.logger.debug('Refreshing wheel display...')
+	end
+
 	-- Get fresh keystone data
 	frame.keystoneData = self:GetKeystoneData()
 
@@ -276,11 +280,18 @@ function KeystoneRoulette:RefreshWheelKeystones()
 	if count == 0 then
 		frame.resultText:SetText('No keystones found!\nJoin a party or get a keystone.')
 		frame.spinButton:Hide()
+		if self.logger then
+			self.logger.warning('Wheel refresh: No keystones to display')
+		end
 		return
 	end
 
 	frame.spinButton:Show()
 	frame.resultText:SetText('Press SPIN to select a keystone!')
+
+	if self.logger then
+		self.logger.debug('Wheel refresh: Displaying ' .. count .. ' keystones')
+	end
 
 	for i, keystone in ipairs(frame.keystoneData) do
 		-- Create frame if needed
@@ -344,11 +355,17 @@ end
 function KeystoneRoulette:StartSpin()
 	local frame = self.WheelFrame
 	if not frame or frame.spinning then
+		if self.logger then
+			self.logger.debug('Spin blocked: ' .. (frame.spinning and 'already spinning' or 'no frame'))
+		end
 		return
 	end
 
 	local count = #frame.keystoneData
 	if count == 0 then
+		if self.logger then
+			self.logger.warning('Spin blocked: no keystones on wheel')
+		end
 		return
 	end
 
@@ -364,16 +381,15 @@ function KeystoneRoulette:StartSpin()
 	-- Update result text
 	frame.resultText:SetText('Spinning...')
 
-	-- Start wheel decoration animation (optional visual flair)
-	if frame.wheelDecoration then
-		-- Could add rotation animation here
-	end
-
 	-- Play sound
 	PlaySound(SOUNDKIT.UI_70_ARTIFACT_FORGE_APPEARANCE_APPEARANCE_CHANGE)
 
+	local winner = frame.keystoneData[frame.selectedIndex]
 	if self.logger then
-		self.logger.debug('Spin started, selected index: ' .. frame.selectedIndex)
+		self.logger.info('Spin started!')
+		self.logger.debug('  Keystones on wheel: ' .. count)
+		self.logger.debug('  Spin duration: ' .. self.db.spinDuration .. 's')
+		self.logger.debug('  Pre-selected winner: ' .. winner.player .. ' - ' .. winner.dungeonName .. ' +' .. winner.level)
 	end
 end
 
@@ -456,7 +472,12 @@ function KeystoneRoulette:OnSpinComplete()
 		self:AnnounceWinner(winner)
 
 		if self.logger then
-			self.logger.info('Winner: ' .. winner.player .. ' - ' .. winner.tooltip)
+			self.logger.info('Spin complete! Winner: ' .. winner.player .. ' - ' .. winner.dungeonName .. ' +' .. winner.level)
+			self.logger.debug('  Announce to chat: ' .. tostring(self.db.announceWinner and IsInGroup()))
+		end
+	else
+		if self.logger then
+			self.logger.error('Spin complete but no winner found at index ' .. tostring(frame.selectedIndex))
 		end
 	end
 end

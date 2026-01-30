@@ -100,20 +100,37 @@ end
 function KeystoneRoulette:GetKeystoneData()
 	-- Return fake data if test mode is enabled
 	if self.testMode then
+		if self.logger then
+			self.logger.debug('Test mode active, returning fake keystone data')
+		end
 		return self:GetFakeKeystoneData()
 	end
+
 	local keystones = {}
+	local openRaidLib = LibStub:GetLibrary('LibOpenRaid-1.0', true)
+
+	if self.logger then
+		self.logger.debug('Fetching keystone data...')
+		self.logger.debug('  LibOpenRaid available: ' .. tostring(openRaidLib ~= nil))
+		self.logger.debug('  In group: ' .. tostring(IsInGroup()) .. ', In raid: ' .. tostring(IsInRaid()))
+		self.logger.debug('  Group size: ' .. tostring(GetNumGroupMembers()))
+	end
 
 	-- Try LibOpenRaid first
-	local openRaidLib = LibStub:GetLibrary('LibOpenRaid-1.0', true)
 	if openRaidLib then
 		local allKeystoneInfo = openRaidLib.GetAllKeystonesInfo()
+		local totalFromLib = 0
+		local includedCount = 0
+
 		if allKeystoneInfo then
 			for playerName, keystoneInfo in pairs(allKeystoneInfo) do
+				totalFromLib = totalFromLib + 1
 				if keystoneInfo.level and keystoneInfo.level > 0 then
-					-- Only include party members or self
 					local shortName = strsplit('-', playerName)
-					if UnitInParty(shortName) or shortName == UnitName('player') then
+					local isInParty = UnitInParty(shortName)
+					local isSelf = shortName == UnitName('player')
+
+					if isInParty or isSelf then
 						local dungeonName = ''
 						if keystoneInfo.mythicPlusMapID then
 							dungeonName = C_ChallengeMode.GetMapUIInfo(keystoneInfo.mythicPlusMapID) or ''
@@ -129,16 +146,39 @@ function KeystoneRoulette:GetKeystoneData()
 							rating = keystoneInfo.rating or 0,
 							tooltip = dungeonName .. ' +' .. keystoneInfo.level,
 						})
+						includedCount = includedCount + 1
+
+						if self.logger then
+							self.logger.debug('  + Added: ' .. shortName .. ' - ' .. dungeonName .. ' +' .. keystoneInfo.level)
+						end
+					elseif self.logger then
+						self.logger.debug('  - Skipped (not in party): ' .. playerName)
 					end
+				elseif self.logger then
+					self.logger.debug('  - Skipped (no key or level 0): ' .. playerName)
 				end
 			end
+		end
+
+		if self.logger then
+			self.logger.debug('LibOpenRaid results: ' .. totalFromLib .. ' total, ' .. includedCount .. ' included')
 		end
 	end
 
 	-- Fallback: get own keystone if no data from LibOpenRaid
 	if #keystones == 0 then
+		if self.logger then
+			self.logger.debug('No LibOpenRaid data, trying local keystone API...')
+		end
+
 		local ownLevel = C_MythicPlus.GetOwnedKeystoneLevel()
 		local ownMapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+
+		if self.logger then
+			self.logger.debug('  Own keystone level: ' .. tostring(ownLevel))
+			self.logger.debug('  Own keystone mapID: ' .. tostring(ownMapID))
+		end
+
 		if ownLevel and ownLevel > 0 and ownMapID then
 			local dungeonName = C_ChallengeMode.GetMapUIInfo(ownMapID) or ''
 			local _, classFile, classID = UnitClass('player')
@@ -152,6 +192,12 @@ function KeystoneRoulette:GetKeystoneData()
 				rating = 0,
 				tooltip = dungeonName .. ' +' .. ownLevel,
 			})
+
+			if self.logger then
+				self.logger.debug('  + Added own keystone: ' .. dungeonName .. ' +' .. ownLevel)
+			end
+		elseif self.logger then
+			self.logger.debug('  No personal keystone found')
 		end
 	end
 
@@ -159,6 +205,10 @@ function KeystoneRoulette:GetKeystoneData()
 	table.sort(keystones, function(a, b)
 		return a.level > b.level
 	end)
+
+	if self.logger then
+		self.logger.info('Keystone fetch complete: ' .. #keystones .. ' keystones found')
+	end
 
 	return keystones
 end
@@ -168,10 +218,20 @@ function KeystoneRoulette:RequestKeystoneData()
 	local openRaidLib = LibStub:GetLibrary('LibOpenRaid-1.0', true)
 	if openRaidLib then
 		if IsInRaid() then
+			if self.logger then
+				self.logger.debug('Requesting keystone data from raid (' .. GetNumGroupMembers() .. ' members)')
+			end
 			openRaidLib.RequestKeystoneDataFromRaid()
 		elseif IsInGroup() then
+			if self.logger then
+				self.logger.debug('Requesting keystone data from party (' .. GetNumGroupMembers() .. ' members)')
+			end
 			openRaidLib.RequestKeystoneDataFromParty()
+		elseif self.logger then
+			self.logger.debug('Not in group, skipping keystone request')
 		end
+	elseif self.logger then
+		self.logger.warning('LibOpenRaid not available, cannot request party keystones')
 	end
 end
 
@@ -297,7 +357,9 @@ function KeystoneRoulette:OnInitialize()
 	SLASH_KEYSTONEROULETTE2 = '/keystoneroulette'
 	SlashCmdList['KEYSTONEROULETTE'] = function(msg)
 		if msg == 'options' or msg == 'config' then
-			Settings.OpenToCategory("Lib's - Keystone Roulette")
+			if self.settingsCategoryID then
+				Settings.OpenToCategory(self.settingsCategoryID)
+			end
 		elseif msg == 'test' then
 			self.testMode = not self.testMode
 			if self.testMode then
